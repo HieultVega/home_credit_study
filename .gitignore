@@ -1,0 +1,7 @@
+/data/clean/*
+/data/raw/*
+
+.Rproj.user
+.RData
+.Rprofile
+.Rhistory

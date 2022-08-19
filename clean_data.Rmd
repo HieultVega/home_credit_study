@@ -1,0 +1,71 @@
+---
+title: "clean_data"
+author: "hieult"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# load package
+
+```{r set up}
+
+library(tidyverse)
+library(janitor)
+library(skimr)
+
+```
+
+
+# load data
+
+
+```{r load data}
+
+appli <- read_csv(here::here('data','raw','application_train.csv'))
+
+```
+
+# nhìn qua về dữ liệu
+
+
+```{r}
+
+str(appli)
+
+```
+
+
+xem tên của các columns
+
+```{r}
+
+colnames(appli)
+
+```
+
+nhận thấy tên của các column đang ở dạng upper case, cần chuyển về dạng lowercase
+
+
+nhận thấy mỗi dòng là 1 quan sát, không có cột nào bị gộp biến cũng như không có biến nào bị chuyển thành nhiều column 
+
+cho nên chỉ sử dụng thư viện janitor chức năng clean_names
+
+
+```{r}
+
+appli <- janitor::clean_names(appli)
+
+```
+
+
+write ra file csv
+
+
+```{r}
+
+write_csv(appli,here::here('data','clean','application.csv'))
+
+```
+
+
+
+

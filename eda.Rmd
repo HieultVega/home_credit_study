@@ -1,0 +1,879 @@
+---
+title: "eda"
+author: "hieult"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# load thư viện
+
+```{r setup}
+
+library(tidyverse)
+library(here)
+library(skimr)
+
+```
+
+
+
+# load dữ liệu
+
+```{r load data}
+
+appli <- read_csv(here::here('data', 'clean', 'application.csv'))
+
+```
+
+để eda dũ liệu, sẽ lấy các cột sau
+
+sk_id_curr: ID của khoản vay
+
+code_gender: giới tính
+
+amt_income_total: tổng thu nhập của khách hàng
+
+amt_credit : số tiền tín dụng của khoản vay
+
+name_income_type: loại thu nhập của khách hàng
+
+name_education_type: trình độ học vấn cao nhất của khách hàng đạt được
+
+occupation_type: nghề nghiệp khách hàng
+
+ext_source_2: Điểm chuẩn hóa từ nguồn dữ liệu bên ngoài thứ 2
+
+ext_source_3: Điểm chuẩn hóa từ nguồn dữ liệu bên ngoài thứ 3
+
+target: 1- khách hàng gặp khó khăn thanh toán, 0 - không khó khăn
+
+
+```{r}
+
+appli_sub01 <-
+  appli %>% select(
+    "sk_id_curr",
+    "code_gender",
+    "amt_income_total",
+    "amt_credit",
+    "name_income_type",
+    "name_education_type",
+    "occupation_type",
+    "ext_source_2",
+    "ext_source_3",
+    "target"
+  )
+
+```
+
+
+
+# tổng quan về dữ liệu
+
+xem dòng đầu của dữ liệu
+
+
+```{r}
+
+head(appli_sub01)
+
+```
+
+
+```{r}
+
+skimr::skim(appli_sub01)
+
+```
+
+bộ dữ liệu có 307.511 quan sát và 11 biến, trong đó có 4 biến định tính và 7 biến định lượng
+
+
+sử dụng hàm str
+
+```{r}
+
+str(appli_sub01)
+
+```
+
+rename 1 số trường cho ngắn ngọn lại
+
+
+```{r}
+
+appli_sub01 <- appli_sub01 %>% rename(
+  loan_id = sk_id_curr,
+  gender = code_gender,
+  amt_income = amt_income_total,
+  income_type = name_income_type,
+  edu = name_education_type,
+  job = occupation_type,
+)
+
+```
+
+
+```{r}
+
+colnames(appli_sub01)
+
+```
+
+
+Bài toán trên là bài toán phân loại người khó khăn trong thanh toán và những người không khó khăn, biến phụ thuộc là biến target trong đó 1 = khó khăn và 0 là không khó khăn
+
+# EDA
+
+## EDA biến phụ thuộc
+
+Xem số lượng khách hàng khó khăn và không khó khăn ra sao
+
+
+```{r}
+
+appli_sub01 %>% ggplot() + geom_bar(aes(target))
+
+```
+
+nhận thấy số lượng người khó khăn ít hơn rất nhiều so với những người không khó khăn. Điều này phản ánh đúng thực tế vì nếu đa số người đều khó khăn thì tổ chức tín dụng sẽ phá sản. 
+
+Như vậy bài toán trên là imbalance
+
+
+## eda vào những biến định tính
+
+
+### biến giới tính
+
+
+```{r}
+
+appli_sub01 %>% ggplot() + geom_bar(aes(gender, fill = gender))
+
+```
+
+nhận thấy nữ có nhiều khoản vay hơn nam
+
+kiểm tra giới tính có ảnh hưởng đến thu nhập
+
+```{r}
+appli_sub01 %>% group_by(gender) %>% summarise(
+  mean_income = mean(amt_income),
+  med_income = median(amt_income),
+  min_income = min(amt_income),
+  max_income = max(amt_income)
+) 
+
+
+```
+thấy thu nhập của nam giới cao hơn nữ giới. tuy nhiên nữ giới có thu nhập cao nhất khá vượt trội và khả nghi. sẽ xem kĩ hơn vào quan sát này
+
+
+```{r}
+
+appli_sub01 %>% arrange(desc(amt_income)) %>% head(10)
+
+```
+
+nhìn kĩ hơn vào khoản vay bất thường này, thấy thông tin của khách hàng có công việc và trình độ học vấn không cao, điểm extent source cũng thấp nhưng có thu nhập cao là rất bất thường, nhiều khả năng đây là do quá trình nhập dữ liệu bị sai.
+
+
+thử xóa dòng outliner này và bỏ các dữ liệu trống xem kết quả như nào
+
+```{r}
+
+appli_rm_outlier <- appli_sub01 %>% filter(amt_income != 117000000) 
+
+```
+
+
+xem lại tương quan thu nhập giữa nam và nữ
+
+```{r}
+
+income_by_gender <- appli_rm_outlier %>% group_by(gender) %>% summarise(
+  mean_income = mean(amt_income),
+  med_income = median(amt_income),
+  min_income = min(amt_income),
+  max_income = max(amt_income)
+) 
+
+income_by_gender
+
+```
+
+xem tỉ lệ thu nhập nam trên nữ
+
+
+```{r}
+
+income_by_gender[2,-1]*100/income_by_gender[1,-1]
+
+```
+
+trung bình nam giới hơn nữ giới 24% thu nhập, trung vị là 33%
+
+
+
+xem giới tính có ảnh hưởng đến tình trạng khó khăn trong thanh toán
+
+```{r}
+
+appli_rm_outlier %>% ggplot(aes(gender, fill = factor(target))) + geom_bar(stat = "count", position = "dodge")
+
+```
+
+Nhìn có thể thấy tỉ lệ phụ nữ không khó khăn trả nợ ít hơn nam giới. để tính toán số
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  group_by(gender, target) %>% 
+  count() %>% 
+  pivot_wider(names_from = target, values_from = n) %>% 
+  mutate(difficult_percent = `1` / (`0` + `1`) * 100)
+
+```
+
+theo tỉ lệ đã tính, tỉ lệ khó khăn của nữ gần 7% trong đó nam là 10.14%. cho thấy nam giới tuy nhu nhập cao hơn nhưng cũng gặp khó khăn về tài chính hơn
+
+
+
+### eda biến income_type
+
+```{r}
+
+appli_rm_outlier %>% ggplot() + geom_bar(aes(income_type, fill = income_type)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+về thu nhập của người vay, cao nhất là thu nhập từ làm công và tít nhất là trợ cấp sinh viên, trợ cấp thất nghiệp, trợ cấp thai sản và thu nhập đầu tư
+
+```{r}
+
+appli_rm_outlier %>% ggplot(aes(income_type, fill = factor(target))) + geom_bar(stat = "count", position = "dodge") +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+
+```
+
+```{r}
+
+appli_rm_outlier %>% 
+  group_by(income_type, target) %>% 
+  count() %>% 
+  pivot_wider(names_from = target, values_from = n) %>% 
+  mutate(difficult_percent = `1` / (`0` + `1`) * 100)
+
+```
+
+Nghỉ thai sản và thất nghiệp có số lượng khoản vay khá ít nhưng cũng có tỉ lệ khó khăn cao. điều này phản ánh đúng thực tế khi người thất nghiệp và thai sản khó khăn hơn để được vay. tiếp theo là những người có thu nhập từ làm công với tỉ lệ khó khăn là 9.58 %
+
+
+
+### eda trường job
+
+
+
+```{r}
+
+appli_rm_outlier %>% ggplot() + geom_bar(aes(job, fill = job)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+công nhân : laborers có số lượng khoản vay cao nhất, thấp nhất là nhân sự, IT và môi giới bất động sản. có thể do nhân sự, IT và môi giới bds có thu nhập cao nên nhu cầu vay thấp
+
+
+kiểm tra mối quan hệ giữa nghề nghiệp và thu nhập
+
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  ggplot(aes(x = job, y = amt_income, fill = job)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+
+```{r}
+
+appli_rm_outlier %>%
+  filter(!is.na(job)) %>% 
+  ggplot(aes(x = job, y = amt_income, fill = job)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+Manager có nhu nhập cao nhất và cũng có nhiều người có thu nhạp rât cao. bỏ qua outliner để xem kĩ thu nhập hơn
+
+
+```{r}
+
+
+appli_rm_outlier %>%
+  ggplot(aes(x = job, y = amt_income, fill = job)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  scale_y_continuous(limits = quantile(appli_rm_outlier$amt_income, c(0, 0.9)))
+
+```
+
+dựa theo thu nhập trung vị trong boxplot, nhận thấy môi giới bất động sản có thu nhập cao (chỉ sau manager),sau đó là đến nhân viên dịch vụ cá nhân, tiếp mới là  nhân viên IT và nhân sự , nhân viên có kĩ năng tin học cao, lái xe và kế toán . thấp nhất là nhân viên dọn dẹp và nhân viên có kĩ năng thấp
+
+
+
+xem thu nhập trung bình của nghề nghiệp
+
+♠
+
+```{r}
+appli_rm_outlier %>%
+  group_by(job) %>%
+  summarise(mean_income = mean(amt_income)) %>%
+  ggplot() + geom_col(aes(job, mean_income, fill = job)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+```
+
+
+theo biểu đồ cột thì thu nhập trung bình thấp nhất vẫn là nhân viên dọn dẹp và nv có kĩ năng thấp. cao nhất vẫn là quản lý. nhân viên IT tuy trung vị cũng tương đương nhiều ngành khác nhưng trung bình cao, cho thấy nhiều cá nhân có thu nhập rất cao 
+
+
+
+```{r}
+
+appli_rm_outlier %>% ggplot(aes(job, fill = factor(target))) + geom_bar(stat = "count", position = "dodge") +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+
+```
+
+
+
+```{r}
+
+appli_rm_outlier %>%
+  group_by(job, target) %>%
+  count() %>%
+  pivot_wider(names_from = target, values_from = n) %>%
+  mutate(difficult_percent = `1` / (`0` + `1`) * 100) %>%  
+  arrange(desc(difficult_percent))
+
+```
+
+về tỉ lệ khó khăn tài chính của các nghề nghiệp thì lao động có kĩ năng thấp cao hơn các nghề khác khá nhiều với 17.15%. sau đó là lái xe, bồi bàn, nhân viên bảo vệ khoảng 11 %
+
+thấp nhât là kế toán với chỉ 4.8% khó khăn về nghĩa vụ khoản vay
+
+### eda biến edu (học ván)
+
+
+
+```{r}
+
+appli_sub01 %>% ggplot() + geom_bar(aes(edu, fill = edu)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+chủ yếu người vay có trình độ chỉ ở trung học, rất ít người có trình độ học viện
+
+
+kiểm tra mối quan hệ giữa học vấn và thu nhập
+
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  ggplot(aes(x = edu, y = amt_income, fill = edu)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  ggplot(aes(x = edu, y = amt_income, fill = edu)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  scale_y_continuous(limits = quantile(appli_rm_outlier$amt_income, c(0, 0.9)))
+
+```
+
+
+xem thu nhập trung bình của trình độ học vấn
+
+♠
+
+```{r}
+
+appli_rm_outlier %>% 
+  group_by(edu) %>%
+  summarise(mean_income = mean(amt_income)) %>%
+  ggplot() + geom_col(aes(edu, mean_income, fill = edu)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+```
+
+
+Nhận thấy thu nhập thấp nhất là dưới trung học và cao nhất là trình độ học viện, điều này phản ánh đúng thực tế. Ngoài ra, trình độ higher education có nhiều người có thu nhập rất cao
+
+
+xem mối quan hệ giữa học vấn và nghề nghiệp
+
+```{r}
+
+edu_list <- unique(appli_rm_outlier$edu)
+
+```
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  filter(edu == edu_list[1]) %>% 
+  ggplot() + geom_bar(aes(job, fill = job)) +
+  ggtitle(paste('jobs of level', edu_list[1])) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+trình độ cấp 2 chủ yếu làm công nhân, rất ít làm IT
+
+
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  filter(edu == edu_list[2]) %>% 
+  ggplot() + geom_bar(aes(job, fill = job)) +
+  ggtitle(paste('jobs of level', edu_list[2])) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+higher education chủ yếu làm core staff và manager, ít khi là nv skill thấp hoặc bồi bàn/ nấu ăn
+
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  filter(edu == edu_list[3]) %>% 
+  ggplot() + geom_bar(aes(job, fill = job)) +
+  ggtitle(paste('jobs of level', edu_list[3])) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+trình đọ chưa tốt nghiệp đai học chủ yếu làm công nhân, core staff và nhân viên bán hàng
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  filter(edu == edu_list[4]) %>% 
+  ggplot() + geom_bar(aes(job, fill = job)) +
+  ggtitle(paste('jobs of level', edu_list[4])) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+trình độ dưới trung học chủ yếu làm công nhân, ít khi làm IT và đại lý bất động sản
+
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  filter(edu == edu_list[5]) %>% 
+  ggplot() + geom_bar(aes(job, fill = job)) +
+  ggtitle(paste('jobs of level', edu_list[5])) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+```
+
+
+trình độ academic chủ yếu làm managers và corestaff, ít khi làm nấu ăn, nv bất động sản và nv kĩ năng thấp
+
+
+xem tương quan giữa học vấn và khó khăn trong tài chính
+
+
+```{r}
+
+appli_rm_outlier %>% ggplot(aes(edu, fill = factor(target))) + geom_bar(stat = "count", position = "dodge") +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  ))
+
+
+```
+
+
+
+```{r}
+
+appli_rm_outlier %>%
+  group_by(edu, target) %>%
+  count() %>%
+  pivot_wider(names_from = target, values_from = n) %>%
+  mutate(difficult_percent = `1` / (`0` + `1`) * 100) %>%  
+  arrange(desc(difficult_percent))
+
+```
+
+trình độ dưới trung học có tỉ lệ khó khăn cao nhất, tiếp đến là trình độ trung học và chưa tốt nghiệp đại học. ít nhất là trình độ academic (tiến sĩ, thạc sĩ) với tỉ lệ chỉ 1.8 %
+
+## eda biến định lượng
+
+
+xem phân phối của các biến 
+
+
+```{r}
+
+summary(appli_rm_outlier %>%
+          select(where(is.numeric) &
+                   !c(target, loan_id)))
+
+```
+
+nhận thấy cả biến amt_income và amt_credit đều có giá trị max cao vượt trội. trường ext_source_2 và ext_source_3 đều có giá trị trong khoảng từ 0 đến 1, trong đó 0 là thấp nhất trong đánh giá của nguồn bên ngoài, 1 là cao nhất cho thấy khả năng an toàn nhất. Ta thấy cả 2 nguồn bên ngoài đều có giá trị min là 0, và giá trị max tương ứng là 0.85 và 0.90
+
+
+xem tương quan giữa các biến định lượng
+
+vì có missing data, sử dụng  argument: "pairwise.complete.obs": mối tương quan giữa mỗi cặp biến được tính bằng cách sử dụng tất cả các cặp hoàn chỉnh của các biến cụ thể đó
+
+
+```{r}
+
+cor(appli_rm_outlier %>% 
+      select(where(is.numeric) & !loan_id),use="pairwise.complete.obs")
+
+```
+
+nhận thấy các biến tương quan khá yếu 
+
+
+### eda biến amt_income.
+
+xem phân phối của biến amt_imcome
+
+```{r}
+
+appli_rm_outlier %>% ggplot(aes(amt_income)) + geom_histogram()
+
+```
+
+
+nhận thấy vùng income tập trung chủ yếu ở phần dưới 1.000.000 đô , nên sẽ tập trung vào phần này
+
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  filter(amt_income < 7.5e5) %>% 
+  ggplot(aes(amt_income)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE) + 
+  scale_x_continuous(breaks = seq(0, 7.5e5, 7.5e4), lim = c(0, 7.5e5)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE)
+  
+
+
+```
+
+phân phối lệch phải, đỉnh chuông nằm ở khu vục khoảng 75000 đến 150.000, cho thấy thu nhập phổ biến ở range này
+
+
+xem kĩ hơn mối liên quan giữa amt_income và amt_credit
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  filter(amt_income < 7.5e5) %>% 
+  ggplot() + geom_point(aes(amt_income,amt_credit)) +
+  geom_smooth(aes(amt_income,amt_credit))
+
+```
+
+có thể thấy khi thu nhập tăng thì số tiền tín dụng cũng có chiều hướng tăng
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  mutate(target_char = ifelse(target,'bad','good')) %>% 
+  filter(amt_income < 7.5e5) %>% 
+  ggplot() + geom_point(aes(amt_income,amt_credit)) +
+  geom_smooth(aes(amt_income,amt_credit))+
+  facet_wrap(~target_char)
+  
+
+```
+có vẻ với những người có amt_credit cao hơn thì ít khó khăn về tài chính hơn
+
+
+
+xem mối quan hệ giữa biến amt_income và biến target
+
+
+```{r}
+
+
+appli_rm_outlier %>% 
+  ggplot() + geom_point(aes(amt_income, target))
+
+
+```
+
+
+có thể thấy nhũng người có thu nhập rất cao thì không gặp khó khăn trong khoản vay của họ. tuy nhiên đối với những người có thu nhập trung bình và thấp, chưa thấy mối quan hệ chặt chẽ đến khả năng gặp khó khăn của họ hay không
+
+
+### eda biến amt_credit
+
+
+xem phân phối của biến này
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  ggplot(aes(amt_credit)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 4e6, 2e5), lim = c(0, 4e6)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE)
+  
+
+
+```
+
+amount credit tập trung vào khoảng từ 200.000 đến 400.000
+
+
+### eda biến ext_source_2
+
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  ggplot(aes(ext_source_2)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE)
+  
+
+
+```
+
+extended souce 2 có phân phối tập trung trong khoangr từ 0.6 đến 0.7
+
+xem 
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  filter(target == 0) %>% 
+  ggplot(aes(ext_source_2)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE) +
+  labs(title = 'target = 0')
+
+```
+
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  filter(target == 1) %>% 
+  ggplot(aes(ext_source_2)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE) +
+  labs(title = 'target = 1')
+
+```
+
+
+
+
+có thể thấy phân phối trong target = 0 và target = 1 có sự khác nhau, đôi với khách hàng gặp khó khăn, thì phần có số điểm từ 0 đến 0.6 có tỉ lệ cao hơn so với tập khách hàng không gặp khó khăn
+
+
+### eda với biến ext_source_3
+
+
+```{r}
+
+appli_rm_outlier %>% 
+  ggplot(aes(ext_source_3)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE)
+  
+
+
+```
+```{r}
+
+appli_rm_outlier %>% 
+  filter(target == 0) %>% 
+  ggplot(aes(ext_source_3)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE) +
+  labs(title = 'target = 0')
+
+```
+
+```{r}
+
+appli_rm_outlier %>% 
+  filter(target == 1) %>% 
+  ggplot(aes(ext_source_3)) + 
+  geom_histogram(color="black",fill = 'darkgreen',na.rm = TRUE,bins = 30) + 
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 0.5,
+    hjust = 1
+  )) +
+  geom_freqpoly(col = 'red',na.rm = TRUE) +
+  labs(title = 'target = 1')
+
+```
+đối với biến ext_source_3 rõ ràng đã thấy sự khác biệt, trong khi với khách hàng không khó khăn thì đỉnh nẳm từ khoảng 0.55 đến 0.75 thì khách hàng khó khăn thì đỉnh nằm từ 0.2 đến 0.33, cho thấy biến ext_source_3 có mqh với target
